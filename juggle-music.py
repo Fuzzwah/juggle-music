@@ -21,6 +21,9 @@ import cv2
 from mingus.midi import fluidsynth
 
 fluidsynth.init('/usr/share/sounds/sf2/FluidR3_GM.sf2',"alsa")
+fluidsynth.set_instrument(0, 118)
+fluidsynth.set_instrument(1, 114)
+fluidsynth.set_instrument(2, 0)
 
 class App(object):
 	def __init__(self, video_src):
@@ -37,6 +40,7 @@ class App(object):
 		self.tracking = False
 
 	def onmouse(self, event, x, y, flags, param):
+		""" Checks the color of the selected pixel and sets up the color range for the object """
 		if event == cv2.EVENT_LBUTTONDOWN:
 			self.selection = self.hsv[y, x]
 			low = self.selection[0] - 5
@@ -44,14 +48,25 @@ class App(object):
 			self.objects[self.this_obj] = (np.array((low, 80, 80)), np.array((high, 255, 255)))
 			self.tracking = True
 
+	def trigger(self, obj, cx, cy):
+		if cy < (self.height / 3):
+			if obj == "orange":
+				fluidsynth.play_Note(cy, 0, 80)
+			elif obj == "yellow":
+				fluidsynth.play_Note(cy, 1, 80)
+			elif obj == "red":
+				fluidsynth.play_Note(cy, 2, 100)
+
 	def run(self):
 		while True:
 			# read from the webcam
 			ret, self.frame = self.cam.read()
-			width = np.size(self.frame, 1)
+			self.width = np.size(self.frame, 1)
+			self.height = np.size(self.frame, 0)
 			
+			# prompt the user to click on our objects
 			if len(self.objects) < 3:
-				cv2.rectangle(self.frame, (0,0), (width,50), (0,0,0), -1)
+				cv2.rectangle(self.frame, (0,0), (self.width,50), (0,0,0), -1)
 				if not "orange" in self.objects:
 					cv2.putText(self.frame,"Click on the orange object", (100,30), self.font, 1, (0,115,255), 2)
 					self.this_obj = "orange"
@@ -72,30 +87,30 @@ class App(object):
 				# draw a blue dot in the center of each object
 				# it will be this point which is tracked for sample triggering
 				for obj, bounds in self.objects.iteritems():
-					try:
-						col_range = cv2.inRange(self.hsv,bounds[0],bounds[1])
+					#try:
+					col_range = cv2.inRange(self.hsv,bounds[0],bounds[1])
 
-						# find contours in the threshold images
-						contours,hierarchy = cv2.findContours(col_range,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
+					# find contours in the threshold images
+					contours,hierarchy = cv2.findContours(col_range,cv2.RETR_LIST,cv2.CHAIN_APPROX_SIMPLE)
 
-						# finding contour with maximum area and store it as best_cnt
-						max_area = 0
-						for cnt in contours:
-							area = cv2.contourArea(cnt)
-							if area > max_area:
-								max_area = area
-								best_cnt = cnt
+					# finding contour with maximum area and store it as best_cnt
+					max_area = 0
+					for cnt in contours:
+						area = cv2.contourArea(cnt)
+						if area > max_area:
+							max_area = area
+							best_cnt = cnt
 
-						# finding centroids of best_cnt and draw a circle there
-						M = cv2.moments(best_cnt)
-						cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
-						cv2.circle(self.frame,(cx,cy),5,255,-1)
-						
-						if cx < 150 and cy < 150:
-							print("triggered by %s" % obj)
-							fluidsynth.play_Note(64,0,100)
-					except:
-						print("no color range for %s yet" % obj)
+					# finding centroids of best_cnt and draw a circle there
+					M = cv2.moments(best_cnt)
+					cx,cy = int(M['m10']/M['m00']), int(M['m01']/M['m00'])
+					cv2.circle(self.frame,(cx,cy),5,255,-1)
+					
+					# pass the object and its co-ords to our trigger function
+					self.trigger(obj, cx, cy)
+
+					#except:
+						#print("issue tracking %s object" % obj)
 
 			# Show it, if key pressed is 'Esc', exit the loop
 			cv2.imshow('juggle-music',self.frame)
